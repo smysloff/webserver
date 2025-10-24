@@ -5,6 +5,7 @@ import { createServer } from 'node:http'
 import { createSecureServer } from 'node:http2'
 import { setuid, setgid } from 'node:process'
 import Route from './Route.mjs'
+import Middleware from './Middleware.mjs'
 import { isString, isFunction } from './utils.mjs'
 
 export default class HttpServer {
@@ -21,7 +22,7 @@ export default class HttpServer {
   }
 
   use(path, ...handlers) {
-    const route = new Route({ method: 'GET', path, handlers })
+    const route = new Middleware({ path, handlers })
     this.#stack.push(route)
     return this
   }
@@ -100,7 +101,7 @@ export default class HttpServer {
             `server: privileges dropped to uid=${ uid }, gid=${ gid } `
           )
         } catch (error) {
-          console.errr(
+          console.error(
             `server: failed to drop privileges: `, error
           )
         }
@@ -138,15 +139,24 @@ export default class HttpServer {
       const layer = stack[index++]
 
       if (
+        layer instanceof Middleware
+        && layer.match(path)
+      ) {
+        for (const handler of layer.handlers) {
+          handler(request, response, next)
+        }
+      }
+
+      else if (
         layer instanceof Route
         && layer.match(method, path)
       ) {
         for (const handler of layer.handlers) {
-          handler.length === 3
-            ? handler(request, response, next)
-            : handler(request, response)
+          handler(request, response)
         }
-      } else {
+      }
+
+      else {
         next()
       }
 
